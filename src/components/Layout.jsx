@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Gauge,
   Wallet,
@@ -6,7 +6,13 @@ import {
   Landmark,
   ClipboardCheck,
   BarChart3,
-  Settings as SettingsIcon,
+  SlidersHorizontal,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Check,
+  AlertCircle,
+  HardDriveDownload,
   ChevronLeft,
   ChevronRight,
   Activity,
@@ -18,12 +24,13 @@ import { cx } from "./ui.jsx";
 
 export const NAV = [
   { id: "mission", label: "Mission Control", short: "Mission", icon: Gauge },
+  { id: "owner", label: "Owner Control", short: "Owner", icon: SlidersHorizontal },
   { id: "personal", label: "Personal", short: "Personal", icon: Wallet },
   { id: "business", label: "Business", short: "Business", icon: Briefcase },
   { id: "legacy", label: "Legacy Building", short: "Legacy", icon: Landmark },
   { id: "reviews", label: "Monthly Reviews", short: "Reviews", icon: ClipboardCheck },
   { id: "analytics", label: "Analytics", short: "Stats", icon: BarChart3 },
-  { id: "settings", label: "Settings", short: "Settings", icon: SettingsIcon },
+  { id: "account", label: "Account & Data", short: "Account", icon: Cloud },
 ];
 
 function Logo({ compact = false }) {
@@ -42,33 +49,98 @@ function Logo({ compact = false }) {
   );
 }
 
+function relativeTime(iso) {
+  if (!iso) return "never";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+export function SyncStatus({ compact = false, onClick }) {
+  const { sync, isCloudConfigured, session } = useApp();
+  let icon = Cloud;
+  let color = "text-white/50";
+  let label = "Local";
+  let detail = "saved on device";
+
+  if (!isCloudConfigured) {
+    icon = HardDriveDownload;
+    label = "Local";
+    detail = "saved on device";
+  } else if (!session) {
+    icon = CloudOff;
+    label = "Signed out";
+    detail = "local only";
+  } else {
+    switch (sync.state) {
+      case "syncing":
+        icon = RefreshCw;
+        color = "text-indigo-300";
+        label = "Syncing";
+        detail = "saving…";
+        break;
+      case "saved":
+        icon = Check;
+        color = "text-brand-300";
+        label = "Synced";
+        detail = relativeTime(sync.lastSynced);
+        break;
+      case "offline":
+        icon = CloudOff;
+        color = "text-gold-400";
+        label = "Offline";
+        detail = "will sync later";
+        break;
+      case "error":
+        icon = AlertCircle;
+        color = "text-red-400";
+        label = "Sync error";
+        detail = "tap to retry";
+        break;
+      default:
+        icon = Cloud;
+        label = "Cloud";
+        detail = "ready";
+    }
+  }
+  const Icon = icon;
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-xl bg-white/5 px-2.5 py-2 ring-1 ring-white/10 hover:bg-white/10"
+      title={`${label} · ${detail}`}
+    >
+      <Icon size={15} className={cx(color, sync.state === "syncing" && "animate-spin")} />
+      {!compact && (
+        <span className="hidden leading-tight sm:block">
+          <span className={cx("block text-xs font-600", color)}>{label}</span>
+          <span className="block text-[10px] text-white/35">{detail}</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
 function MonthSelector() {
   const { selectedMonth, setSelectedMonth } = useApp();
   const isCurrent = selectedMonth === currentMonthKey();
   return (
     <div className="flex items-center gap-1 rounded-xl bg-white/5 p-1 ring-1 ring-white/10">
-      <button
-        onClick={() => setSelectedMonth((m) => addMonths(m, -1))}
-        className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
-        aria-label="Previous month"
-      >
+      <button onClick={() => setSelectedMonth((m) => addMonths(m, -1))} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Previous month">
         <ChevronLeft size={16} />
       </button>
       <button
         onClick={() => setSelectedMonth(currentMonthKey())}
-        className={cx(
-          "min-w-[120px] rounded-lg px-2 py-1 text-center text-xs font-600 sm:text-sm",
-          isCurrent ? "text-white" : "text-brand-300"
-        )}
+        className={cx("min-w-[110px] rounded-lg px-2 py-1 text-center text-xs font-600 sm:min-w-[120px] sm:text-sm", isCurrent ? "text-white" : "text-brand-300")}
         title="Jump to current month"
       >
         {monthLabel(selectedMonth)}
       </button>
-      <button
-        onClick={() => setSelectedMonth((m) => addMonths(m, 1))}
-        className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
-        aria-label="Next month"
-      >
+      <button onClick={() => setSelectedMonth((m) => addMonths(m, 1))} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Next month">
         <ChevronRight size={16} />
       </button>
     </div>
@@ -80,27 +152,16 @@ function ScoreChip() {
   const { score } = wealthScore(data, selectedMonth);
   const tier = scoreTier(score);
   return (
-    <div className="hidden items-center gap-2 rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10 sm:flex">
+    <div className="hidden items-center gap-2 rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10 md:flex">
       <div className="relative grid h-8 w-8 place-items-center">
         <svg viewBox="0 0 36 36" className="h-8 w-8 -rotate-90">
           <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
-          <circle
-            cx="18"
-            cy="18"
-            r="15"
-            fill="none"
-            stroke={tier.color}
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeDasharray={`${(score / 100) * 94} 94`}
-          />
+          <circle cx="18" cy="18" r="15" fill="none" stroke={tier.color} strokeWidth="3" strokeLinecap="round" strokeDasharray={`${(score / 100) * 94} 94`} />
         </svg>
       </div>
       <div className="leading-tight">
         <div className="tabnum text-sm font-700 text-white">{score}</div>
-        <div className="text-[10px] uppercase tracking-wide" style={{ color: tier.color }}>
-          {tier.label}
-        </div>
+        <div className="text-[10px] uppercase tracking-wide" style={{ color: tier.color }}>{tier.label}</div>
       </div>
     </div>
   );
@@ -112,7 +173,6 @@ export function Layout({ active, setActive, children }) {
 
   return (
     <div className="app-bg min-h-screen text-white">
-      {/* Sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/8 bg-ink-900/60 px-4 py-6 backdrop-blur-xl lg:flex">
         <div className="px-2">
           <Logo />
@@ -137,17 +197,13 @@ export function Layout({ active, setActive, children }) {
           })}
         </nav>
         <div className="mt-4 rounded-xl bg-white/[0.03] p-3 ring-1 ring-white/5">
-          <p className="text-[11px] leading-relaxed text-white/40">
-            “Every pound has a job. Spend like the person you’re becoming.”
-          </p>
+          <p className="text-[11px] leading-relaxed text-white/40">“Every pound has a job. Spend like the person you’re becoming.”</p>
         </div>
       </aside>
 
-      {/* Main column */}
       <div className="lg:pl-64">
-        {/* Top bar */}
         <header className="sticky top-0 z-20 border-b border-white/8 bg-ink-950/70 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="lg:hidden">
                 <Logo compact />
@@ -159,6 +215,7 @@ export function Layout({ active, setActive, children }) {
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <ScoreChip />
+              <SyncStatus onClick={() => setActive("account")} />
               <MonthSelector />
             </div>
           </div>
@@ -167,9 +224,8 @@ export function Layout({ active, setActive, children }) {
         <main className="mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:pb-12">{children}</main>
       </div>
 
-      {/* Bottom nav (mobile) */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-ink-950/85 backdrop-blur-xl lg:hidden">
-        <div className="no-scrollbar mx-auto flex max-w-2xl items-stretch justify-between overflow-x-auto px-1 py-1.5">
+        <div className="no-scrollbar mx-auto flex max-w-3xl items-stretch justify-between overflow-x-auto px-1 py-1.5">
           {NAV.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
@@ -177,10 +233,7 @@ export function Layout({ active, setActive, children }) {
               <button
                 key={item.id}
                 onClick={() => setActive(item.id)}
-                className={cx(
-                  "flex min-w-[64px] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-600 transition",
-                  isActive ? "text-brand-300" : "text-white/45"
-                )}
+                className={cx("flex min-w-[62px] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-600 transition", isActive ? "text-brand-300" : "text-white/45")}
               >
                 <Icon size={19} />
                 {item.short}

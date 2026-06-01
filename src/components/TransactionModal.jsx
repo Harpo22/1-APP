@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Modal, Field, MoneyInput, Select, Input, Textarea, Toggle, Button, Badge, cx } from "./ui.jsx";
-import { todayISO, parseMonthKey } from "../lib/format.js";
+import { todayISO } from "../lib/format.js";
 import {
   PAYMENT_METHODS,
   PERSONAL_INCOME_CATEGORIES,
@@ -20,7 +20,7 @@ function defaultDateForMonth(monthKey) {
 }
 
 export function TransactionModal({ open, onClose, scope, editing, defaultType = "expense" }) {
-  const { actions, symbol, selectedMonth } = useApp();
+  const { data, actions, symbol, selectedMonth } = useApp();
   const isPersonal = scope === "personal";
 
   const [type, setType] = useState(defaultType);
@@ -34,8 +34,10 @@ export function TransactionModal({ open, onClose, scope, editing, defaultType = 
   const [why, setWhy] = useState("");
   const [trigger, setTrigger] = useState("");
 
-  const incomeCats = isPersonal ? PERSONAL_INCOME_CATEGORIES : BUSINESS_REVENUE_CATEGORIES;
-  const expenseCats = isPersonal ? PERSONAL_EXPENSE_CATEGORIES : BUSINESS_EXPENSE_CATEGORIES;
+  const bizRevenue = data.business?.revenueSources?.length ? data.business.revenueSources : BUSINESS_REVENUE_CATEGORIES;
+  const bizExpense = data.business?.expenseCategories?.length ? data.business.expenseCategories : BUSINESS_EXPENSE_CATEGORIES;
+  const incomeCats = isPersonal ? PERSONAL_INCOME_CATEGORIES : bizRevenue;
+  const expenseCats = isPersonal ? PERSONAL_EXPENSE_CATEGORIES : bizExpense;
   const cats = type === "income" ? incomeCats : expenseCats;
 
   useEffect(() => {
@@ -99,15 +101,12 @@ export function TransactionModal({ open, onClose, scope, editing, defaultType = 
       title={`${editing ? "Edit" : "Add"} ${isPersonal ? "Personal" : "Business"} Transaction`}
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={save}>{editing ? "Save changes" : "Add transaction"}</Button>
         </div>
       }
     >
       <div className="space-y-4">
-        {/* type toggle */}
         <div className="grid grid-cols-2 gap-2">
           {["income", "expense"].map((t) => (
             <button
@@ -162,19 +161,14 @@ export function TransactionModal({ open, onClose, scope, editing, defaultType = 
           <div className="animate-fade-up rounded-xl border border-red-400/20 bg-red-500/5 p-4">
             <div className="mb-3 flex items-start gap-2">
               <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-300" />
-              <p className="text-sm font-700 text-red-200">
-                WAS THIS PURCHASE WORTH MOVING FURTHER AWAY FROM YOUR FUTURE?
-              </p>
+              <p className="text-sm font-700 text-red-200">WAS THIS PURCHASE WORTH MOVING FURTHER AWAY FROM YOUR FUTURE?</p>
             </div>
             <div className="mb-3 grid grid-cols-3 gap-2">
               {WASTE_VERDICTS.map((v) => (
                 <button
                   key={v}
                   onClick={() => setVerdict(v)}
-                  className={cx(
-                    "rounded-lg px-2 py-2 text-xs font-600 ring-1 transition",
-                    verdict === v ? "bg-white/15 text-white ring-white/30" : "bg-white/5 text-white/50 ring-white/10"
-                  )}
+                  className={cx("rounded-lg px-2 py-2 text-xs font-600 ring-1 transition", verdict === v ? "bg-white/15 text-white ring-white/30" : "bg-white/5 text-white/50 ring-white/10")}
                 >
                   {v}
                 </button>
