@@ -86,6 +86,13 @@ export const LIABILITY_FIELDS = [
   { key: "otherDebt", label: "Other Debt" },
 ];
 
+export const FUND_FIELDS = [
+  { key: "emergencyFund", label: "Emergency Fund Balance" },
+  { key: "houseDeposit", label: "House Deposit Fund" },
+  { key: "investmentFund", label: "Investment Fund" },
+  { key: "retirementFund", label: "Retirement Fund" },
+];
+
 export const CURRENCIES = [
   { code: "GBP", symbol: "£", label: "British Pound" },
   { code: "USD", symbol: "$", label: "US Dollar" },
@@ -113,3 +120,43 @@ export const PIPELINE_FIELDS = {
     { key: "mrr", label: "Monthly Recurring Revenue", money: true },
   ],
 };
+
+// ---- Mission Control customisable cards ----
+// Each card is computed in MissionControl by id.
+export const MISSION_CARDS = [
+  { id: "netWorth", label: "Net Worth" },
+  { id: "freedom", label: "Freedom Progress" },
+  { id: "wealthScore", label: "Wealth Score" },
+  { id: "monthlyIncome", label: "Monthly Income" },
+  { id: "businessRevenue", label: "Business Revenue" },
+  { id: "savings", label: "Savings This Month" },
+  { id: "wasted", label: "Wasted This Month" },
+  { id: "businessProfit", label: "Business Profit" },
+  { id: "cashAvailable", label: "Cash Available" },
+  { id: "businessCash", label: "Business Cash" },
+  { id: "revenueVelocity", label: "Revenue Velocity" },
+  { id: "cashRunway", label: "Cash Runway" },
+];
+
+export const DEFAULT_MISSION_LAYOUT = MISSION_CARDS.map((c) => ({ id: c.id, visible: true }));
+
+// ---- CEO Daily Brief ----
+export const CEO_BRIEF_METRICS = MISSION_CARDS;
+
+export const CEO_BUSINESS_METRICS = [
+  { id: "revenue", label: "Revenue" },
+  { id: "profit", label: "Profit" },
+  { id: "mrr", label: "Recurring Revenue" },
+  { id: "leads", label: "New Leads" },
+  { id: "conversion", label: "Conversion Rate" },
+  { id: "outstanding", label: "Outstanding Invoices" },
+];
+
+export const DEFAULT_CEO_BRIEF = {
+  metrics: ["netWorth", "monthlyIncome", "freedom", "wealthScore"],
+  showAlerts: true,
+  goals: [], // legacy goal ids; empty = top goals by progress
+  businessMetrics: ["revenue", "profit", "leads"],
+};
+
+export const SNAPSHOT_TYPES = ["monthly", "quarterly", "yearly", "manual"];

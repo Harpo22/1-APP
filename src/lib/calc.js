@@ -5,6 +5,7 @@ import {
   parseMonthKey,
   monthLabel,
   addMonths,
+  currentMonthKey,
   clamp,
 } from "./format.js";
 import { WEALTH_CATEGORIES, RECURRING_REVENUE_CATEGORIES } from "./constants.js";
@@ -32,33 +33,17 @@ export function personalMetrics(data, key) {
   const bills = byCat("Bills");
   const fuel = byCat("Fuel");
 
-  // total spending excludes wealth allocations (savings/investments)
   const spending = sum(expenses.filter((t) => !WEALTH_CATEGORIES.includes(t.category)));
 
-  // general discretionary spending excludes bills, fuel & wealth allocations
   const generalSpending = sum(
-    expenses.filter(
-      (t) => !["Bills", "Fuel", ...WEALTH_CATEGORIES].includes(t.category)
-    )
+    expenses.filter((t) => !["Bills", "Fuel", ...WEALTH_CATEGORIES].includes(t.category))
   );
 
   const wasted = sum(
     expenses.filter((t) => t.necessary === false || t.category === "Wasted Money")
   );
 
-  return {
-    income,
-    spending,
-    generalSpending,
-    bills,
-    fuel,
-    savings,
-    investments,
-    wasted,
-    byCat,
-    expenses,
-    transactions: tx,
-  };
+  return { income, spending, generalSpending, bills, fuel, savings, investments, wasted, byCat, expenses, transactions: tx };
 }
 
 // ---------- business metrics ----------
@@ -78,34 +63,42 @@ export function businessMetrics(data, key) {
   return { revenue, expenses, profit, taxReserve, recurring, mrr, outstanding, transactions: tx, pipeline: pipe };
 }
 
-// ---------- net worth ----------
+// ---------- net worth (override-aware) ----------
 export function netWorthSnapshot(data) {
   const assets = Object.values(data.assets || {}).reduce((a, v) => a + (Number(v) || 0), 0);
   const liabilities = Object.values(data.liabilities || {}).reduce((a, v) => a + (Number(v) || 0), 0);
-  return { assets, liabilities, netWorth: assets - liabilities };
+  const computed = assets - liabilities;
+  const override = data.owner?.useNetWorthOverride && Number(data.owner?.netWorthOverride) > 0
+    ? Number(data.owner.netWorthOverride)
+    : null;
+  return { assets, liabilities, computed, netWorth: override != null ? override : computed, overridden: override != null };
 }
 
 export function netWorthForMonth(data, key) {
   const hist = data.netWorthHistory || {};
+  if (key === currentMonthKey()) {
+    const snap = netWorthSnapshot(data);
+    if (snap.overridden) return snap.netWorth;
+    if (hist[key] != null) return hist[key];
+    return snap.netWorth;
+  }
   if (hist[key] != null) return hist[key];
-  // fall back to current snapshot for the live month
   return netWorthSnapshot(data).netWorth;
 }
 
-// ---------- growth helpers ----------
 export function pctChange(current, previous) {
   if (!previous) return current ? 100 : 0;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-// ---------- cash available ----------
 export function cashAvailable(data) {
   return Number(data.assets?.cash) || 0;
 }
 
 export function businessCash(data, key) {
-  // running business profit across all history up to & including key
-  const months = Object.keys(data.pipeline || {});
+  if (key === currentMonthKey() && data.business?.cashOverride) {
+    return Number(data.business?.cash) || 0;
+  }
   let total = 0;
   data.transactions
     .filter((t) => t.scope === "business")
@@ -114,7 +107,29 @@ export function businessCash(data, key) {
         total += t.type === "income" ? t.amount : -t.amount;
       }
     });
-  return Math.round(total * 0.55); // a realistic retained-cash portion after draws/tax
+  return Math.round(total * 0.55);
+}
+
+// ---------- revenue velocity ----------
+export function revenueVelocity(data, key) {
+  const months = lastNMonths(key, 3);
+  const vals = months.map((k) => businessMetrics(data, k).revenue);
+  const first = vals[0];
+  const last = vals[vals.length - 1];
+  const steps = Math.max(1, vals.length - 1);
+  const value = Math.round((last - first) / steps); // £ per month momentum
+  const pct = pctChange(last, first);
+  return { value, pct };
+}
+
+// ---------- cash runway ----------
+export function cashRunway(data, key) {
+  const totalCash = cashAvailable(data) + businessCash(data, key);
+  const months = lastNMonths(key, 3);
+  const burns = months.map((k) => personalMetrics(data, k).spending + businessMetrics(data, k).expenses);
+  const avgBurn = burns.reduce((a, b) => a + b, 0) / Math.max(1, burns.length);
+  if (avgBurn <= 0) return { months: Infinity, burn: 0, totalCash };
+  return { months: totalCash / avgBurn, burn: avgBurn, totalCash };
 }
 
 // ---------- wealth score (0-100) ----------
@@ -163,7 +178,7 @@ export function scoreTier(score) {
   return { label: "Weak", color: "#ff6b6b" };
 }
 
-// ---------- monthly ranking (0-100, 4x25) ----------
+// ---------- monthly ranking ----------
 export function monthlyRanking(data, key) {
   const prev = prevMonthKey(key);
   const p = personalMetrics(data, key);
@@ -232,7 +247,6 @@ export function freedomMetrics(data, key) {
 
   const overall = Math.round((incomeProgress + netWorthProgress) / 2);
 
-  // historical income series & best month
   const series = lastNMonths(key, 12)
     .map((k) => {
       const pm = personalMetrics(data, k);
@@ -243,8 +257,6 @@ export function freedomMetrics(data, key) {
     .filter((s) => s.value > 0);
 
   const best = series.reduce((acc, s) => (s.value > (acc?.value || 0) ? s : acc), null);
-
-  // estimated completion based on avg monthly growth of income
   const completion = estimateCompletion(series, currentMonthlyIncome, f.desiredMonthlyIncome);
 
   return {
@@ -254,6 +266,8 @@ export function freedomMetrics(data, key) {
     desiredMonthlyIncome: f.desiredMonthlyIncome || 0,
     desiredAnnualIncome: f.desiredAnnualIncome || 0,
     desiredNetWorth: f.desiredNetWorth || 0,
+    retirementNumber: f.retirementNumber || 0,
+    freedomDateGoal: f.freedomDateGoal || "",
     incomeProgress,
     annualProgress,
     netWorthProgress,
@@ -272,11 +286,10 @@ function estimateCompletion(series, current, target) {
   const first = series[0].value;
   const last = series[series.length - 1].value;
   const months = series.length - 1;
-  const avgGrowth = (last - first) / months; // absolute £/month
+  const avgGrowth = (last - first) / months;
   if (avgGrowth <= 0) return null;
   const monthsNeeded = Math.ceil((target - current) / avgGrowth);
   if (monthsNeeded <= 0 || monthsNeeded > 600) return null;
-  const date = parseMonthKey(addMonths(series[series.length - 1].raw, monthsNeeded));
   return { monthsNeeded, label: monthLabel(addMonths(series[series.length - 1].raw, monthsNeeded)) };
 }
 
@@ -291,7 +304,6 @@ export function wasteAnalytics(data, key) {
   const previous = series[series.length - 2]?.value || 0;
   const reduction = previous ? clamp(((previous - current) / previous) * 100, -100, 100) : 0;
 
-  // categories & triggers from all wasted tx
   const wastedTx = data.transactions.filter(
     (t) => t.scope === "personal" && t.type === "expense" && (t.necessary === false || t.category === "Wasted Money")
   );
@@ -350,6 +362,10 @@ export function redFlags(data, key) {
   if (expSpike > 25 && bPrev.expenses > 0) {
     flags.push({ level: "warn", text: `Business expenses spiked ${Math.round(expSpike)}% versus last month.` });
   }
+  const runway = cashRunway(data, key);
+  if (runway.months !== Infinity && runway.months < 3) {
+    flags.push({ level: "danger", text: `Cash runway is only ${runway.months.toFixed(1)} months — build a buffer.` });
+  }
   return flags;
 }
 
@@ -368,10 +384,8 @@ export function generateReview(data, key) {
   const improve = [];
   const focus = [];
 
-  if (p.savings + p.investments > 0)
-    wins.push(`Moved ${money(p.savings + p.investments)} into savings & investments.`);
-  if (b.revenue > bPrev.revenue)
-    wins.push(`Grew business revenue by ${Math.round(pctChange(b.revenue, bPrev.revenue))}% to ${money(b.revenue)}.`);
+  if (p.savings + p.investments > 0) wins.push(`Moved ${money(p.savings + p.investments)} into savings & investments.`);
+  if (b.revenue > bPrev.revenue) wins.push(`Grew business revenue by ${Math.round(pctChange(b.revenue, bPrev.revenue))}% to ${money(b.revenue)}.`);
   if (b.profit > 0) wins.push(`Generated ${money(b.profit)} in business profit.`);
   if (p.wasted < pPrev.wasted) wins.push(`Cut wasted spending to ${money(p.wasted)} (down from ${money(pPrev.wasted)}).`);
   if (p.income > pPrev.income) wins.push(`Personal income rose to ${money(p.income)}.`);
@@ -385,25 +399,15 @@ export function generateReview(data, key) {
   if (b.revenue < bPrev.revenue)
     improve.push(`Revenue dipped ${Math.abs(Math.round(pctChange(b.revenue, bPrev.revenue)))}% versus last month.`);
 
-  // 3 priorities
   const wa = wasteAnalytics(data, key);
   if (p.wasted > 0)
     focus.push(`Reduce wasted spending — top trigger is "${wa.byTrigger[0]?.[0] || "Impulse"}". Halving it saves ${money(wa.annualIfHalved)}/yr.`);
   focus.push(`Push revenue toward your ${money(data.businessGoals?.revenueGoal || 0)} goal by closing pipeline deals.`);
   focus.push(`Automate ${money(budgets.savingsGoal || 0)} into savings on payday before spending.`);
 
-  return {
-    wins: wins.slice(0, 5),
-    improve: improve.slice(0, 4),
-    focus: focus.slice(0, 3),
-  };
+  return { wins: wins.slice(0, 5), improve: improve.slice(0, 4), focus: focus.slice(0, 3) };
 }
 
-// ---------- generic trend series ----------
 export function trendSeries(data, endKey, count, fn) {
-  return lastNMonths(endKey, count).map((k) => ({
-    key: k,
-    label: monthLabel(k, true),
-    ...fn(k),
-  }));
+  return lastNMonths(endKey, count).map((k) => ({ key: k, label: monthLabel(k, true), ...fn(k) }));
 }

@@ -5,7 +5,14 @@ import {
   monthKey,
   uid,
 } from "./format.js";
-import { WASTE_TRIGGERS, WASTE_VERDICTS } from "./constants.js";
+import {
+  WASTE_TRIGGERS,
+  WASTE_VERDICTS,
+  BUSINESS_REVENUE_CATEGORIES,
+  BUSINESS_EXPENSE_CATEGORIES,
+  DEFAULT_MISSION_LAYOUT,
+  DEFAULT_CEO_BRIEF,
+} from "./constants.js";
 
 // Deterministic pseudo-random so demo data is stable per session build.
 function rng(seed) {
@@ -135,12 +142,14 @@ export function buildDemoData() {
   const curNW = netWorthHistory[cur];
 
   return {
-    meta: { version: 1, createdAt: new Date().toISOString() },
+    meta: { version: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDemo: true },
     settings: { name: "Alex", currencyCode: "GBP", currencySymbol: "£" },
     freedom: {
       desiredMonthlyIncome: 10000,
       desiredAnnualIncome: 120000,
       desiredNetWorth: 1000000,
+      retirementNumber: 1500000,
+      freedomDateGoal: `${parseMonthKey(cur).year + 10}-01-01`,
     },
     futureSelf: {
       lifestyleVision:
@@ -150,6 +159,7 @@ export function buildDemoData() {
       mainReason: "Give my family security and freedom my parents never had — and never feel trapped by money again.",
     },
     personalBudgets: {
+      incomeTarget: 4000,
       generalSpending: 800,
       fuel: 250,
       bills: 700,
@@ -157,8 +167,21 @@ export function buildDemoData() {
       investmentGoal: 500,
       wastedMoneyLimit: 150,
     },
-    businessGoals: { monthlyLeadGoal: 40, revenueGoal: 6000 },
-    business: { taxReservePct: 25 },
+    businessGoals: { monthlyLeadGoal: 40, revenueGoal: 6000, profitGoal: 4000, clientGoal: 12, mrrGoal: 3000 },
+    business: {
+      taxReservePct: 25,
+      cash: 9400,
+      cashOverride: false,
+      revenueSources: [...BUSINESS_REVENUE_CATEGORIES],
+      expenseCategories: [...BUSINESS_EXPENSE_CATEGORIES],
+      assets: [
+        { id: uid(), name: "Brand & domain portfolio", value: 4000 },
+        { id: uid(), name: "Equipment & gear", value: 3500 },
+        { id: uid(), name: "Recurring contracts (12x MRR)", value: 11400 },
+      ],
+    },
+    funds: { emergencyFund: 7800, houseDeposit: 18500, investmentFund: 9600, retirementFund: 5200 },
+    owner: { netWorthOverride: 0, useNetWorthOverride: false },
     assets: {
       cash: 4200,
       savings: 14800,
@@ -174,12 +197,15 @@ export function buildDemoData() {
     pipeline,
     legacyGoals: [
       { id: uid(), name: "Emergency Fund", icon: "shield", current: 7800, target: 12000, deadline: deadlineFrom(cur, 6) },
-      { id: uid(), name: "Business Account", icon: "briefcase", current: 9400, target: 25000, deadline: deadlineFrom(cur, 10) },
+      { id: uid(), name: "Business Growth Fund", icon: "briefcase", current: 9400, target: 25000, deadline: deadlineFrom(cur, 10) },
       { id: uid(), name: "House Deposit", icon: "home", current: 18500, target: 50000, deadline: deadlineFrom(cur, 24) },
       { id: uid(), name: "Investment Fund", icon: "trending-up", current: 9600, target: 100000, deadline: deadlineFrom(cur, 60) },
       { id: uid(), name: "£1 Million Net Worth", icon: "crown", current: curNW, target: 1000000, deadline: deadlineFrom(cur, 120) },
     ],
     reviews: {},
+    layout: { missionCards: DEFAULT_MISSION_LAYOUT.map((c) => ({ ...c })) },
+    ceoBrief: { ...DEFAULT_CEO_BRIEF, metrics: [...DEFAULT_CEO_BRIEF.metrics], businessMetrics: [...DEFAULT_CEO_BRIEF.businessMetrics] },
+    snapshots: [],
   };
 }
 
